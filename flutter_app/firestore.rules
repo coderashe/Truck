@@ -1,0 +1,189 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasUserProfile() {
+      return isSignedIn() && exists(userPath());
+    }
+
+    function currentUser() {
+      return get(userPath()).data;
+    }
+
+    function belongsToCompany(companyId) {
+      return hasUserProfile() && currentUser().companyId == companyId;
+    }
+
+    function userRole() {
+      return currentUser().role;
+    }
+
+    function isOwner() {
+      return hasUserProfile() && userRole() == 'owner';
+    }
+
+    function isStaffOrOwner() {
+      return hasUserProfile() && (userRole() == 'owner' || userRole() == 'staff');
+    }
+
+    function isCustomer() {
+      return hasUserProfile() && userRole() == 'customer';
+    }
+
+    // Validates that an incoming document does not swap companyId on update
+    function companyIdUnchanged() {
+      return request.resource.data.companyId == resource.data.companyId;
+    }
+
+    // -------------------------------------------------------------------------
+    // /users/{uid}
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == uid ||
+        (hasUserProfile() && isOwner() && resource.data.companyId == currentUser().companyId)
+      );
+
+      // Users can create their own profile during onboarding/registration.
+      // Phase 2: Customers creating their own profile must set role == 'customer'.
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role in ['owner', 'staff', 'customer']
+        && request.resource.data.email is string;
+
+      // Users can update non-privileged fields; only owner can change roles in their company.
+      allow update: if isSignedIn() && (
+        (request.auth.uid == uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId)
+        || (isOwner() && resource.data.companyId == currentUser().companyId)
+      );
+
+      allow delete: if isOwner()
+        && resource.data.companyId == currentUser().companyId
+        && request.auth.uid != uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // /companies/{companyId}
+    // -------------------------------------------------------------------------
+    match /companies/{companyId} {
+      allow read: if isSignedIn() && (
+        belongsToCompany(companyId) || resource.data.ownerId == request.auth.uid
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+
+      // Owners can update any company field; staff can increment invoiceCounter via transaction
+      allow update: if belongsToCompany(companyId) && (
+        isOwner() ||
+        (isStaffOrOwner() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invoiceCounter']))
+      );
+
+      allow delete: if belongsToCompany(companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /trucks/{truckId}
+    // -------------------------------------------------------------------------
+    match /trucks/{truckId} {
+      allow read: if belongsToCompany(resource.data.companyId) && isStaffOrOwner();
+      allow create: if belongsToCompany(request.resource.data.companyId) && isOwner();
+      allow update: if belongsToCompany(resource.data.companyId) && isOwner() && companyIdUnchanged();
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /drivers/{driverId}
+    // -------------------------------------------------------------------------
+    match /drivers/{driverId} {
+      allow read: if belongsToCompany(resource.data.companyId) && isStaffOrOwner();
+      allow create: if belongsToCompany(request.resource.data.companyId) && isOwner();
+      allow update: if belongsToCompany(resource.data.companyId) && isOwner() && companyIdUnchanged();
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /customers/{customerId}
+    // -------------------------------------------------------------------------
+    match /customers/{customerId} {
+      allow read: if belongsToCompany(resource.data.companyId) && (
+        isStaffOrOwner() ||
+        (isCustomer() && resource.data.uid == request.auth.uid)
+      );
+      allow create: if belongsToCompany(request.resource.data.companyId) && isStaffOrOwner();
+      allow update: if belongsToCompany(resource.data.companyId) && isStaffOrOwner() && companyIdUnchanged();
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /orders/{orderId}
+    // Phase 2 Ready: Customers can create booking requests with status == 'Requested'
+    // and read only orders matching their customerId / createdBy uid.
+    // -------------------------------------------------------------------------
+    match /orders/{orderId} {
+      allow read: if belongsToCompany(resource.data.companyId) && (
+        isStaffOrOwner() ||
+        (isCustomer() && (
+          resource.data.createdBy == request.auth.uid ||
+          resource.data.customerId == currentUser().customerId
+        ))
+      );
+
+      allow create: if belongsToCompany(request.resource.data.companyId) && (
+        isStaffOrOwner() ||
+        (isCustomer()
+          && request.resource.data.status == 'Requested'
+          && request.resource.data.createdBy == request.auth.uid)
+      );
+
+      allow update: if belongsToCompany(resource.data.companyId) && companyIdUnchanged() && (
+        isStaffOrOwner() ||
+        (isCustomer()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status == 'Requested'
+          && request.resource.data.status == 'Cancelled')
+      );
+
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /invoices/{invoiceId}
+    // -------------------------------------------------------------------------
+    match /invoices/{invoiceId} {
+      allow read: if belongsToCompany(resource.data.companyId) && (
+        isOwner() ||
+        (isCustomer() && resource.data.customerId == currentUser().customerId)
+      );
+      allow create: if belongsToCompany(request.resource.data.companyId) && isOwner();
+      allow update: if belongsToCompany(resource.data.companyId) && isOwner() && companyIdUnchanged();
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // /expenses/{expenseId}
+    // Owner-only financial records
+    // -------------------------------------------------------------------------
+    match /expenses/{expenseId} {
+      allow read: if belongsToCompany(resource.data.companyId) && isOwner();
+      allow create: if belongsToCompany(request.resource.data.companyId) && isOwner();
+      allow update: if belongsToCompany(resource.data.companyId) && isOwner() && companyIdUnchanged();
+      allow delete: if belongsToCompany(resource.data.companyId) && isOwner();
+    }
+  }
+}

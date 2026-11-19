@@ -1,0 +1,8 @@
+{
+  "name": "TruckFlow",
+  "description": "Trucking and haulage operations manager with per-km round-trip pricing, PDF invoicing, expense analytics, route heatmaps, and complete Flutter/Firebase codebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
