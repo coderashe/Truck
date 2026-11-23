@@ -1,0 +1,63 @@
+name: truckflow
+description: Complete haulage and trucking business operations manager built with Flutter and Firebase.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+
+  # State Management & Routing
+  flutter_riverpod: ^2.4.9
+  go_router: ^14.6.2
+
+  # Local Database
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # UI & Icons
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.2.0
+
+  # Charts & Graphs
+  fl_chart: ^0.65.0
+
+  # Maps & Location
+  google_maps_flutter: ^2.10.0
+  geolocator: ^13.0.2
+  http: ^1.6.0
+
+  # Firebase
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.6.0
+  firebase_storage: ^12.3.7
+  google_sign_in: ^6.2.1
+
+  # PDF & Sharing
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  share_plus: ^10.1.3
+
+  # Device Utilities
+  url_launcher: ^6.3.1
+  image_picker: ^1.1.2
+  intl: ^0.18.1
+  uuid: ^4.2.1
+  path_provider: ^2.1.5
+  device_info_plus: ^10.1.0
+  shared_preferences: ^2.2.2
+  local_auth: ^2.1.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
