@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/price_calculator.dart';
 import '../../core/utils/validators.dart';
+import '../../shared/widgets/location_picker_screen.dart';
 
 class OrderFormScreen extends ConsumerStatefulWidget {
   const OrderFormScreen({super.key});
@@ -82,6 +83,28 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
       extras: double.tryParse(_extrasCtrl.text.trim()) ?? 0,
       discount: double.tryParse(_discountCtrl.text.trim()) ?? 0,
     );
+  }
+
+  Future<void> _openLocationPicker({required bool isPickup}) async {
+    final result = await Navigator.of(context).push<GeoPointLocation>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => LocationPickerScreen(
+          title: isPickup ? 'Pickup' : 'Drop-off',
+          initial: isPickup ? _pickupGeo : _dropoffGeo,
+        ),
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      if (isPickup) {
+        _pickupGeo = result;
+        _pickupCtrl.text = result.address;
+      } else {
+        _dropoffGeo = result;
+        _dropoffCtrl.text = result.address;
+      }
+    });
   }
 
   Future<void> _autoCalculateDistance() async {
@@ -327,24 +350,24 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
               onChanged: (v) => setState(() => _source = v ?? OrderSource.whatsapp),
             ),
             const SizedBox(height: 14),
-            TextFormField(
-              controller: _pickupCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Pickup Location *',
-                hintText: 'e.g. Harare Industrial Depot',
-                prefixIcon: Icon(Icons.trip_origin),
-              ),
+            // Pickup — tap to open map picker
+            _LocationTile(
+              label: 'Pickup Location *',
+              icon: Icons.trip_origin,
+              iconColor: Colors.green,
+              onTap: () => _openLocationPicker(isPickup: true),
               validator: (v) => AppValidators.requiredField(v, 'Pickup location'),
+              controller: _pickupCtrl,
             ),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _dropoffCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Drop-off Location *',
-                hintText: 'e.g. Bulawayo Belmont Warehouse',
-                prefixIcon: Icon(Icons.location_on_outlined),
-              ),
+            // Drop-off — tap to open map picker
+            _LocationTile(
+              label: 'Drop-off Location *',
+              icon: Icons.location_on,
+              iconColor: Colors.red,
+              onTap: () => _openLocationPicker(isPickup: false),
               validator: (v) => AppValidators.requiredField(v, 'Drop-off location'),
+              controller: _dropoffCtrl,
             ),
             const SizedBox(height: 12),
             TextFormField(
@@ -586,6 +609,68 @@ class _OrderFormScreenState extends ConsumerState<OrderFormScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── Location tile widget ─────────────────────────────────────────────────────
+
+class _LocationTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color iconColor;
+  final VoidCallback onTap;
+  final String? Function(String?)? validator;
+  final TextEditingController controller;
+
+  const _LocationTile({
+    required this.label,
+    required this.icon,
+    required this.iconColor,
+    required this.onTap,
+    required this.controller,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FormField<String>(
+      initialValue: controller.text,
+      validator: (_) => validator?.call(controller.text),
+      builder: (state) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: label,
+                  prefixIcon: Icon(icon, color: iconColor),
+                  suffixIcon: const Icon(Icons.map_outlined),
+                  errorText: state.errorText,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  controller.text.isNotEmpty
+                      ? controller.text
+                      : 'Tap to select on map',
+                  style: controller.text.isNotEmpty
+                      ? theme.textTheme.bodyMedium
+                      : theme.textTheme.bodyMedium
+                          ?.copyWith(color: theme.hintColor),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

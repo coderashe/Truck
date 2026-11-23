@@ -121,4 +121,20 @@ class MapsService {
   }
 
   double _degToRad(double deg) => deg * (math.pi / 180.0);
+
+  /// Reverse geocode a lat/lng to a human-readable address.
+  /// Returns null if the API key is absent or the request fails.
+  Future<String?> httpGet(Uri uri) async {
+    try {
+      final res = await http.get(uri);
+      if (res.statusCode != 200) return null;
+      final json = jsonDecode(res.body) as Map<String, dynamic>;
+      final results = json['results'] as List<dynamic>?;
+      if (results == null || results.isEmpty) return null;
+      return (results.first as Map<String, dynamic>)['formatted_address']
+          as String?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
