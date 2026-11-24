@@ -1,6 +1,20 @@
 # Changelog
 
-## [Unreleased] - 2024-01-23
+## [Unreleased] - feature/roles-and-team
+
+### Planned
+See `ROLES_AND_TEAM_IMPLEMENTATION.md` for the full plan.
+
+- Role-based access: Owner, Manager, Accountant, Driver
+- Role-specific join codes per company (MGR-XXXX, ACC-XXXX, DRV-XXXX)
+- Team management screen (Owner only)
+- Driver dashboard: assigned trips, stats, leaderboard, heatmap
+- Fix: double-save bug on customer creation
+- Fix: profile editing (personal details + password)
+
+---
+
+## [Unreleased] - feature/maps-and-icon
 
 ### Added - Android Platform Setup ✅
 

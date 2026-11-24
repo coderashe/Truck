@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -50,72 +51,101 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Customer'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Contact Name *'),
-                  validator: (v) => AppValidators.requiredField(v, 'Name'),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: bizCtrl,
-                  decoration: const InputDecoration(labelText: 'Business / Company'),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone *'),
-                  validator: AppValidators.phone,
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: addrCtrl,
-                  decoration: const InputDecoration(labelText: 'Address'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              if (!(formKey.currentState?.validate() ?? false)) return;
-              await ref.read(firestoreServiceProvider).saveCustomer(
-                    Customer(
-                      id: '',
-                      companyId: companyId,
-                      name: nameCtrl.text.trim(),
-                      business: bizCtrl.text.trim(),
-                      phone: phoneCtrl.text.trim(),
-                      email: emailCtrl.text.trim(),
-                      address: addrCtrl.text.trim(),
-                      createdAt: DateTime.now(),
+      builder: (ctx) {
+        bool isSaving = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Add Customer'),
+            content: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Contact Name *'),
+                      validator: (v) => AppValidators.requiredField(v, 'Name'),
                     ),
-                  );
-              if (ctx.mounted) Navigator.pop(ctx, true);
-            },
-            child: const Text('Save'),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: bizCtrl,
+                      decoration: const InputDecoration(
+                          labelText: 'Business / Company'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration:
+                          const InputDecoration(labelText: 'Phone *'),
+                      validator: AppValidators.phone,
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration:
+                          const InputDecoration(labelText: 'Email'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: addrCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Address'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        setDialogState(() => isSaving = true);
+                        try {
+                          await ref
+                              .read(firestoreServiceProvider)
+                              .saveCustomer(
+                                Customer(
+                                  id: '',
+                                  companyId: companyId,
+                                  name: nameCtrl.text.trim(),
+                                  business: bizCtrl.text.trim(),
+                                  phone: phoneCtrl.text.trim(),
+                                  email: emailCtrl.text.trim(),
+                                  address: addrCtrl.text.trim(),
+                                  createdAt: DateTime.now(),
+                                ),
+                              );
+                          if (ctx.mounted) Navigator.pop(ctx, true);
+                        } catch (_) {
+                          if (ctx.mounted) {
+                            setDialogState(() => isSaving = false);
+                          }
+                        }
+                      },
+                child: isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
 
     if (saved == true && mounted) {
@@ -131,6 +161,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final orders = ref.watch(ordersProvider).valueOrNull ?? [];
     final invoices = ref.watch(invoicesProvider).valueOrNull ?? [];
     final currency = ref.watch(currentCompanyProvider).valueOrNull?.currency ?? 'USD';
+    final isOwner = ref.watch(currentUserProfileProvider).valueOrNull?.isOwner ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Customers')),
@@ -267,6 +298,37 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 ),
                                 onPressed: () => _launchWhatsApp(customer.phone),
                               ),
+                              if (isOwner)
+                                IconButton(
+                                  tooltip: 'Delete Customer',
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.loss),
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Delete Customer?'),
+                                        content: Text(
+                                          'Delete ${customer.business.isNotEmpty ? customer.business : customer.name}? '
+                                          'This cannot be undone.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            style: FilledButton.styleFrom(backgroundColor: AppColors.loss),
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true) {
+                                      await ref.read(firestoreServiceProvider).deleteCustomer(customer.id);
+                                    }
+                                  },
+                                ),
                             ],
                           ),
                         ),

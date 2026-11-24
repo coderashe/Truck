@@ -40,6 +40,7 @@ class FirestoreService {
     final now = DateTime.now();
     final batch = _db.batch();
 
+    final codes = generateJoinCodes();
     final company = Company(
       id: companyRef.id,
       name: '',
@@ -50,6 +51,7 @@ class FirestoreService {
       bankDetails: '',
       ownerId: firebaseUser.uid,
       setupCompleted: false,
+      joinCodes: codes,
       createdAt: now,
     );
 
@@ -306,5 +308,173 @@ class FirestoreService {
 
   Future<void> deleteExpense(String expenseId) async {
     await _db.collection('expenses').doc(expenseId).delete();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Team & Join Codes
+  // ---------------------------------------------------------------------------
+
+  /// Generate a random 4-char alphanumeric code with a role prefix.
+  static String _generateCode(String prefix) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rand = DateTime.now().millisecondsSinceEpoch;
+    final code =
+        List.generate(4, (i) => chars[(rand >> (i * 4)) % chars.length])
+            .join();
+    return '$prefix-$code';
+  }
+
+  /// Called when a new company is created — generates all 3 join codes.
+  Map<String, String> generateJoinCodes() => {
+        'manager': _generateCode('MGR'),
+        'accountant': _generateCode('ACC'),
+        'driver': _generateCode('DRV'),
+      };
+
+  /// Regenerate a single role's join code.
+  Future<String> regenerateJoinCode(String companyId, String role) async {
+    final prefix =
+        role == 'manager' ? 'MGR' : role == 'accountant' ? 'ACC' : 'DRV';
+    final newCode = _generateCode(prefix);
+    await _db.collection('companies').doc(companyId).update({
+      'joinCodes.$role': newCode,
+    });
+    return newCode;
+  }
+
+  /// Look up a company by join code. Returns (companyId, role) or null.
+  Future<({String companyId, String role})?> findCompanyByJoinCode(
+      String code) async {
+    final upperCode = code.trim().toUpperCase();
+    // Determine which role field to query based on prefix
+    String roleKey;
+    if (upperCode.startsWith('MGR-')) {
+      roleKey = 'manager';
+    } else if (upperCode.startsWith('ACC-')) {
+      roleKey = 'accountant';
+    } else if (upperCode.startsWith('DRV-')) {
+      roleKey = 'driver';
+    } else {
+      return null;
+    }
+
+    final snap = await _db
+        .collection('companies')
+        .where('joinCodes.$roleKey', isEqualTo: upperCode)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) return null;
+    return (companyId: snap.docs.first.id, role: roleKey);
+  }
+
+  /// Join a company with a code — updates the user's document and adds them to
+  /// the members list.
+  Future<void> joinCompany({
+    required String uid,
+    required String companyId,
+    required String role,
+    required String name,
+    required String email,
+    String? driverId,
+  }) async {
+    final batch = _db.batch();
+    final userRef = _db.collection('users').doc(uid);
+    final companyRef = _db.collection('companies').doc(companyId);
+
+    batch.update(userRef, {
+      'companyId': companyId,
+      'role': role,
+      if (driverId != null) 'driverId': driverId,
+    });
+
+    final member = TeamMember(
+      uid: uid,
+      name: name,
+      email: email,
+      role: role,
+      joinedAt: DateTime.now(),
+    );
+
+    batch.update(companyRef, {
+      'members': FieldValue.arrayUnion([member.toMap()]),
+    });
+
+    await batch.commit();
+  }
+
+  /// Update a team member's role.
+  Future<void> updateMemberRole({
+    required String companyId,
+    required String uid,
+    required String newRole,
+  }) async {
+    // Update user document
+    await _db.collection('users').doc(uid).update({'role': newRole});
+
+    // Update in members array — Firestore doesn't support updating array
+    // elements directly, so we read, modify, write.
+    final companyDoc =
+        await _db.collection('companies').doc(companyId).get();
+    final company = Company.fromFirestore(companyDoc);
+    final updatedMembers = company.members.map((m) {
+      if (m.uid == uid) {
+        return TeamMember(
+            uid: m.uid,
+            name: m.name,
+            email: m.email,
+            role: newRole,
+            joinedAt: m.joinedAt);
+      }
+      return m;
+    }).toList();
+    await _db.collection('companies').doc(companyId).update({
+      'members': updatedMembers.map((m) => m.toMap()).toList(),
+    });
+  }
+
+  /// Remove a member from the company.
+  Future<void> removeMember({
+    required String companyId,
+    required String uid,
+  }) async {
+    final companyDoc =
+        await _db.collection('companies').doc(companyId).get();
+    final company = Company.fromFirestore(companyDoc);
+    final updatedMembers =
+        company.members.where((m) => m.uid != uid).toList();
+
+    final batch = _db.batch();
+    batch.update(_db.collection('users').doc(uid),
+        {'companyId': '', 'role': 'owner'});
+    batch.update(_db.collection('companies').doc(companyId), {
+      'members': updatedMembers.map((m) => m.toMap()).toList(),
+    });
+    await batch.commit();
+  }
+
+  /// Update the current user's personal profile.
+  Future<void> updateUserProfile({
+    required String uid,
+    required String name,
+    required String phone,
+  }) async {
+    await _db.collection('users').doc(uid).update({
+      'name': name,
+      'phone': phone,
+    });
+  }
+
+  /// Watch all team members for a company (from the members array).
+  Stream<List<TeamMember>> watchTeamMembers(String companyId) {
+    return _db
+        .collection('companies')
+        .doc(companyId)
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists) return [];
+      final company = Company.fromFirestore(doc);
+      return company.members;
+    });
   }
 }
