@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -160,6 +161,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final orders = ref.watch(ordersProvider).valueOrNull ?? [];
     final invoices = ref.watch(invoicesProvider).valueOrNull ?? [];
     final currency = ref.watch(currentCompanyProvider).valueOrNull?.currency ?? 'USD';
+    final isOwner = ref.watch(currentUserProfileProvider).valueOrNull?.isOwner ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Customers')),
@@ -296,6 +298,37 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                                 ),
                                 onPressed: () => _launchWhatsApp(customer.phone),
                               ),
+                              if (isOwner)
+                                IconButton(
+                                  tooltip: 'Delete Customer',
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.loss),
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Delete Customer?'),
+                                        content: Text(
+                                          'Delete ${customer.business.isNotEmpty ? customer.business : customer.name}? '
+                                          'This cannot be undone.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(ctx, false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            style: FilledButton.styleFrom(backgroundColor: AppColors.loss),
+                                            onPressed: () => Navigator.pop(ctx, true),
+                                            child: const Text('Delete'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true) {
+                                      await ref.read(firestoreServiceProvider).deleteCustomer(customer.id);
+                                    }
+                                  },
+                                ),
                             ],
                           ),
                         ),
