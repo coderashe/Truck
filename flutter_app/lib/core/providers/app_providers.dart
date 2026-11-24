@@ -101,3 +101,16 @@ final expensesProvider = StreamProvider<List<Expense>>((ref) {
   if (companyId == null) return Stream.value(const []);
   return ref.watch(firestoreServiceProvider).watchExpenses(companyId);
 });
+
+// -----------------------------------------------------------------------------
+// Role helpers
+// -----------------------------------------------------------------------------
+final currentRoleProvider = Provider<UserRole>((ref) {
+  final profile = ref.watch(currentUserProfileProvider).valueOrNull;
+  return profile?.role ?? UserRole.owner;
+});
+
+final canEditProvider = Provider<bool>((ref) {
+  final role = ref.watch(currentRoleProvider);
+  return role == UserRole.owner || role == UserRole.manager;
+});

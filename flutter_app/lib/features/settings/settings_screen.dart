@@ -22,6 +22,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _defaultRoundTrip = true;
   int _accentHex = 0xFF0F172A;
 
+  // Personal profile controllers
+  final _profileNameCtrl = TextEditingController();
+  final _profilePhoneCtrl = TextEditingController();
+  bool _profileInitialized = false;
+
   int _versionTapCount = 0;
   bool _devMenuVisible = false;
   bool _isSeeding = false;
@@ -35,7 +40,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _rateCtrl.dispose();
     _bankCtrl.dispose();
     _footerCtrl.dispose();
+    _profileNameCtrl.dispose();
+    _profilePhoneCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveProfile() async {
+    final user = ref.read(currentUserProfileProvider).valueOrNull;
+    if (user == null) return;
+    await ref.read(firestoreServiceProvider).updateUserProfile(
+          uid: user.uid,
+          name: _profileNameCtrl.text.trim(),
+          phone: _profilePhoneCtrl.text.trim(),
+        );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated')),
+      );
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -96,6 +118,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final company = ref.watch(currentCompanyProvider).valueOrNull;
+    final user = ref.watch(currentUserProfileProvider).valueOrNull;
     final themeMode = ref.watch(themeModeProvider);
 
     if (company != null && !_initialized) {
@@ -110,11 +133,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _initialized = true;
     }
 
+    if (user != null && !_profileInitialized) {
+      _profileNameCtrl.text = user.name;
+      _profilePhoneCtrl.text = user.phone;
+      _profileInitialized = true;
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Text(
+            'My Profile',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _profileNameCtrl,
+            decoration: const InputDecoration(labelText: 'Your Name'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _profilePhoneCtrl,
+            keyboardType: TextInputType.phone,
+            decoration:
+                const InputDecoration(labelText: 'Your Phone'),
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: _saveProfile,
+            child: const Text('Update Profile'),
+          ),
+          const Divider(height: 32),
           const Text(
             'Company & Pricing Defaults',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),

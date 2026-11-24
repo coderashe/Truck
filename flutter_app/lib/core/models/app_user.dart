@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum UserRole {
-  owner('owner', 'Owner / Manager'),
-  staff('staff', 'Staff'),
-  customer('customer', 'Customer');
+  owner('owner', 'Owner'),
+  manager('manager', 'Manager'),
+  accountant('accountant', 'Accountant'),
+  driver('driver', 'Driver');
 
   final String value;
   final String label;
@@ -22,8 +23,10 @@ class AppUser {
   final String companyId;
   final String name;
   final String email;
+  final String phone;
   final UserRole role;
-  final String? customerId; // Phase 2: links customer auth account to /customers/{id}
+  final String? driverId; // set when role == driver
+  final String? customerId;
   final DateTime createdAt;
 
   const AppUser({
@@ -31,14 +34,21 @@ class AppUser {
     required this.companyId,
     required this.name,
     required this.email,
+    this.phone = '',
     required this.role,
+    this.driverId,
     this.customerId,
     required this.createdAt,
   });
 
   bool get isOwner => role == UserRole.owner;
-  bool get isStaff => role == UserRole.staff;
-  bool get isCustomer => role == UserRole.customer;
+  bool get isManager => role == UserRole.manager;
+  bool get isAccountant => role == UserRole.accountant;
+  bool get isDriver => role == UserRole.driver;
+  bool get canEditData => role == UserRole.owner || role == UserRole.manager;
+  bool get canViewFinancials => role != UserRole.driver;
+  bool get canManageTeam => role == UserRole.owner;
+  bool get canAccessSettings => role == UserRole.owner;
 
   factory AppUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -47,7 +57,9 @@ class AppUser {
       companyId: data['companyId'] as String? ?? '',
       name: data['name'] as String? ?? '',
       email: data['email'] as String? ?? '',
+      phone: data['phone'] as String? ?? '',
       role: UserRole.fromString(data['role'] as String?),
+      driverId: data['driverId'] as String?,
       customerId: data['customerId'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -58,7 +70,9 @@ class AppUser {
       'companyId': companyId,
       'name': name,
       'email': email,
+      'phone': phone,
       'role': role.value,
+      if (driverId != null) 'driverId': driverId,
       if (customerId != null) 'customerId': customerId,
       'createdAt': Timestamp.fromDate(createdAt),
     };
@@ -68,7 +82,9 @@ class AppUser {
     String? companyId,
     String? name,
     String? email,
+    String? phone,
     UserRole? role,
+    String? driverId,
     String? customerId,
   }) {
     return AppUser(
@@ -76,7 +92,9 @@ class AppUser {
       companyId: companyId ?? this.companyId,
       name: name ?? this.name,
       email: email ?? this.email,
+      phone: phone ?? this.phone,
       role: role ?? this.role,
+      driverId: driverId ?? this.driverId,
       customerId: customerId ?? this.customerId,
       createdAt: createdAt,
     );
