@@ -1,9 +1,14 @@
+import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/models/order.dart';
 import '../../core/providers/app_providers.dart';
+import '../../core/services/pdf_invoice_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -29,6 +34,55 @@ class InsightsScreen extends ConsumerStatefulWidget {
 class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   HeatmapLayerMode _heatmapMode = HeatmapLayerMode.both;
   int _daysFilter = 180;
+  bool _generatingReport = false;
+
+  Future<void> _generateBusinessReport() async {
+    final company = ref.read(currentCompanyProvider).valueOrNull;
+    if (company == null) return;
+
+    final orders = ref.read(ordersProvider).valueOrNull ?? [];
+    final invoices = ref.read(invoicesProvider).valueOrNull ?? [];
+    final expenses = ref.read(expensesProvider).valueOrNull ?? [];
+    final drivers = ref.read(driversProvider).valueOrNull ?? [];
+    final trucks = ref.read(trucksProvider).valueOrNull ?? [];
+
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month - _daysFilter ~/ 30, 1);
+    final to = now;
+
+    setState(() => _generatingReport = true);
+    try {
+      final pdfService = PdfInvoiceService();
+      final bytes = await pdfService.buildBusinessPositionReport(
+        company: company,
+        orders: orders,
+        invoices: invoices,
+        expenses: expenses,
+        drivers: drivers,
+        trucks: trucks,
+        fromDate: from,
+        toDate: to,
+      );
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/BusinessReport_${now.year}_${now.month}.pdf');
+      await file.writeAsBytes(bytes);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: '${company.name} — Business Position Report',
+        text: 'Please find attached the business position report.',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to generate report: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generatingReport = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +93,18 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
     final currency = company?.currency ?? 'USD';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Business Intelligence')),
+      appBar: AppBar(
+        title: const Text('Business Intelligence'),
+        actions: [
+          IconButton(
+            tooltip: 'Export Business Report PDF',
+            icon: _generatingReport
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: _generatingReport ? null : _generateBusinessReport,
+          ),
+        ],
+      ),
       body: ordersAsync.when(
         loading: () => const LoadingShimmer(),
         error: (e, _) => Center(child: Text('Error: $e')),
